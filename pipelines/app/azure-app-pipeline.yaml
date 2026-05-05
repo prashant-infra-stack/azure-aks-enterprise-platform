@@ -1,0 +1,94 @@
+trigger:
+  paths:
+    include:
+      - application/*
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: kv-devops-secrets
+
+stages:
+
+# =========================
+# SONARQUBE (CODE QUALITY)
+# =========================
+- stage: CodeQuality
+  jobs:
+  - job: Sonar
+    steps:
+
+    - task: SonarQubePrepare@5
+      inputs:
+        SonarQube: 'sonarqube-connection'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: 'aks-app'
+        cliSources: 'application/app'
+
+    - task: SonarQubeAnalyze@5
+    - task: SonarQubePublish@5
+
+# =========================
+# BUILD + PUSH
+# =========================
+- stage: Build
+  jobs:
+  - job: BuildPush
+    steps:
+
+    - checkout: self
+
+    - script: |
+        docker build -t $(acrName).azurecr.io/aks-app:$(Build.BuildId) application/app
+      displayName: "Build Image"
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'svc-connection'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name $(acrName)
+          docker push $(acrName).azurecr.io/aks-app:$(Build.BuildId)
+
+# =========================
+# TRIVY (IMAGE SECURITY)
+# =========================
+- stage: Security
+  jobs:
+  - job: Trivy
+    steps:
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install wget -y
+        wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
+        sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
+
+        trivy image $(acrName).azurecr.io/aks-app:$(Build.BuildId)
+      displayName: "Trivy Scan"
+
+# =========================
+# DEPLOY
+# =========================
+- stage: Deploy
+  jobs:
+  - job: DeployAKS
+    steps:
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'svc-connection'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+
+          az aks get-credentials \
+            --resource-group $(rgName) \
+            --name $(aksName)
+
+          kubectl apply -f application/k8s/namespace.yaml
+          kubectl apply -f application/k8s/app-deployment-blue.yaml
+          kubectl apply -f application/k8s/app-service.yaml

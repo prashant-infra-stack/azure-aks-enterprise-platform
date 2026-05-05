@@ -1,0 +1,53 @@
+trigger:
+  paths:
+    include:
+      - terraform/*
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: kv-devops-secrets
+
+stages:
+
+# =========================
+# VALIDATION + SECURITY
+# =========================
+- stage: Validate
+  jobs:
+  - job: TerraformChecks
+    steps:
+
+    - checkout: self
+
+    - script: |
+        cd terraform/environments/dev
+        terraform fmt -check
+        terraform init -backend-config=backend.hcl
+        terraform validate
+      displayName: "Terraform Validate"
+
+    # 🔐 tfsec (Security scan)
+    - script: |
+        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+        tfsec terraform/
+      displayName: "Terraform Security Scan (tfsec)"
+
+# =========================
+# PLAN + APPLY
+# =========================
+- stage: Deploy
+  jobs:
+  - job: Apply
+    steps:
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'svc-connection'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform/environments/dev
+          terraform init -backend-config=backend.hcl
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan

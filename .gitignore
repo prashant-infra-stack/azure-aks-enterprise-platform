@@ -1,0 +1,41 @@
+# =========================
+# TERRAFORM
+# =========================
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+*.tfvars.json
+
+# backend files (optional if sensitive)
+backend.hcl
+
+# =========================
+# NODE
+# =========================
+node_modules/
+npm-debug.log
+.env
+
+# =========================
+# DOCKER
+# =========================
+*.log
+
+# =========================
+# OS FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# AZURE DEVOPS
+# =========================
+.azure/
